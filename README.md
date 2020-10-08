@@ -1,0 +1,1 @@
+The AIM of this module is to make every linux (for now only) PC controlable via ioBroker.

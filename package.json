@@ -1,0 +1,42 @@
+{
+  "name": "iobroker-drones",
+  "version": "0.0.1",
+  "description": "Module to make your PC controlable via ioBroker",
+  "author": {
+    "name": "Jey Cee",
+    "email": "jey-cee@live.com"
+  },
+  "engines": {
+    "node": ">=8.0"
+  },
+  "contributors": [
+    {
+      "name": "Jey Cee",
+      "email": "jey-cee@live.com"
+    }
+  ],
+  "homepage": "https://github.com/jey-cee/ioBroker-slave",
+  "license": "MIT",
+  "keywords": [
+    "ioBroker",
+    "linux",
+    "Ubuntu",
+    "home automation"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jey-cee/ioBroker-slave"
+  },
+  "dependencies": {
+    "socket.io-client": "^2.2.0"
+  },
+  "devDependencies": {},
+  "main": "main.js",
+  "scripts": {
+    "test": "node node_modules/mocha/bin/mocha --exit"
+  },
+  "bugs": {
+    "url": "https://github.com/jey-cee/ioBroker-slave/issues"
+  },
+  "readmeFilename": "README.md"
+}
