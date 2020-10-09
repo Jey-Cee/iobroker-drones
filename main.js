@@ -4,6 +4,7 @@ const ioClient = require('socket.io-client');
 const exec = require('child_process').exec;
 
 const ns = 'drones';
+const instance = "0";
 let funcs;
 
 //some information
@@ -79,7 +80,9 @@ process.on('SIGTERM', ()=>{
 });
 
 let conn = ioClient.connect('http://' + ip + ':' + port, {
-        query:  'key=nokey'
+        query:  'key=nokey',
+        'reconnection limit':           10000,
+        'max reconnection attempts':    Infinity
     });
 
 
@@ -102,7 +105,7 @@ conn.on('ping', () => {
 });
 
 conn.on('pong', (latency) => {
-    //console.log('Pong: ' + latency);
+    console.log('Pong: ' + latency);
 });
 
 conn.on('objectChange', (id, obj)=>{
@@ -110,6 +113,7 @@ conn.on('objectChange', (id, obj)=>{
 })
 
 conn.on('stateChange', (id, state)=>{
+    console.log(id);
     let path = ns + '.0.' + hostname + '.';
     switch(id){
         case path + 'command':
@@ -142,7 +146,7 @@ conn.on('stateChange', (id, state)=>{
 function init(){
     conn.emit('name', hostname);
 
-    conn.emit('subscribe', ns +'.0.' + hostname);
+    conn.emit('subscribe', `${ns}.${instance}.${hostname}*`);
 
     conn.emit('getObject', ns +'.0.' + hostname, (err, data)=>{
         if(data === null){
