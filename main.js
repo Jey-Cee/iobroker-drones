@@ -6,6 +6,7 @@
 const fs = require('fs');
 const ioClient = require('socket.io-client');
 const exec = require('child_process').exec;
+const constants = require(__dirname + '/lib/constants');
 
 const ns = 'drones';
 const instance = '0';
@@ -126,10 +127,21 @@ conn.on('objectChange', (id, obj)=>{
 conn.on('stateChange', (id, state)=>{
     console.log(id);
     const path = ns + '.0.' + hostname + '.';
+
+    for (const cmd in constants.commands) {
+        if (distribution in constants.commands[cmd]) {
+            if(path + cmd === id && state.val === true) {
+                const osCommand = constants.commands[cmd][distribution];
+                command(osCommand);
+            }
+        }
+    }
+
     switch(id){
         case path + 'command':
             command(state.val);
             break;
+        /*
         case path + 'shutdown':
             if(state.val === true){
                 command('shutdown now');
@@ -144,11 +156,9 @@ conn.on('stateChange', (id, state)=>{
                 });
             }
             break;
+        */
         case path + 'audio.mute':
             // mute();
-            break;
-        case path + 'hibernate':
-            if (distribution==='windows') command('shutdown -h'); // Windows command
             break;
     }
     if (state) console.log('stateChange: ' + id + ' ' + state);
@@ -164,8 +174,7 @@ async function init(){
 
         conn.emit('name', hostname);
 
-        const data = await getObjectAsync(path);
-        if (data === null) await createObjectsAsync();
+        await createObjectsAsync();
 
         conn.emit('setState', path + '.info.connected', {val: true, expire: 51});
 
@@ -178,29 +187,46 @@ async function init(){
 }
 
 async function createObjectsAsync() {
+
     const path = `${ns}.${instance}.${hostname}`;
-    await setObjectAsync(path, {'type': 'device', 'common': {'name': hostname, 'role': 'drone'}, 'native': {}} );
-    await setObjectAsync(path + '.info.connected', {'type': 'state', 'common': {'name': 'Connected', 'role': 'indicator.state', 'type': 'boolean', 'read': true, 'write': false}, 'native': {}});
-    await setObjectAsync(path + '.command', {'type': 'state', 'common': {'name': 'Command', 'role': 'indicator.state', 'type': 'string', 'read': true, 'write': true}, 'native': {}});
-    await setObjectAsync(path + '.shutdown', {'type': 'state', 'common': {'name': 'Shutdown', 'role': 'indicator.state', 'type': 'boolean', 'read': true, 'write': true, 'def': false}, 'native': {}});
-    await setObjectAsync(path + '.reboot', {'type': 'state', 'common': {'name': 'Reboot', 'role': 'indicator.state', 'type': 'boolean', 'read': true, 'write': true, 'def': false}, 'native': {}});
-    await setObjectAsync(path + '.cmd_answer', {'type': 'state', 'common': {'name': 'Command', 'role': 'indicator.state', 'type': 'string', 'read': true, 'write': false}, 'native': {}});
+    const statePaths = [];
+    if (! await getObjectAsync(path)) {
+        await setObjectAsync(path, {'type': 'device', 'common': {'name': hostname, 'role': 'drone'}, 'native': {}});
+    }
 
-    switch(distribution){
-        case 'ubuntu':
-            //
-            break;
-        case 'debian':
-            //
-            break;
-        case '7':
-            //
-            break;
-        case 'windows':
-            await setObjectAsync(path + '.hibernate', {'type': 'state', 'common': {'name': 'Hibernate', 'role': 'button', 'type': 'boolean', 'read': true, 'write': true, 'def': false}, 'native': {}});
-            break;
-    }      
+    const objectsToProcess = [
+        {id: path + '.info.connected', obj:{'type': 'state', 'common': {'name': 'Connected', 'role': 'indicator.state', 'type': 'boolean', 'read': true, 'write': false}, 'native': {}} },
+        {id: path + '.command', obj:{'type': 'state', 'common': {'name': 'Command', 'role': 'indicator.state', 'type': 'string', 'read': true, 'write': true}, 'native': {}} },
+        {id: path + '.cmd_answer', obj:{'type': 'state', 'common': {'name': 'Command', 'role': 'indicator.state', 'type': 'string', 'read': true, 'write': false}, 'native': {}} },
+    ];
+    for (const cmd in constants.commands) {
+        const obj = constants.commands[cmd];
+        if (distribution in obj) {
+            objectsToProcess.push({id: path + '.' + cmd, obj:{'type': 'state', 'common': {'name': obj.name, 'role': 'button', 'type': 'boolean', 'read': true, 'write': true, 'def': false}, 'native': {}}});
+        }
+    }
 
+    for (const stateObj of objectsToProcess) {
+        statePaths.push(stateObj.id);
+        if (! await getObjectAsync(stateObj.id)) {
+            await setObjectAsync(stateObj.id, stateObj.obj);
+        }
+    }
+
+    // Delete all objects which are no longer used.
+    const x = await getStatesAsync(path + '.*');
+    for (const statePath in x) {
+        if ( statePaths.indexOf(statePath) == -1 ) {
+            // State is no longer used.
+            conn.emit('delObject', statePath, (error)=>{
+                if(error) {
+                    console.error(`Error deleting object '${statePath}': ${error}`);
+                } else {
+                    console.log(`Object '${statePath}' deleted, since command or option does no longer exist.'`);                    
+                }
+            });
+        }
+    }
 }
 
 
@@ -237,6 +263,14 @@ function setObjectAsync(path, obj) {
     return new Promise(resolve => {
         conn.emit('setObject', path, obj, ()=>{
             resolve();
+        });
+    });
+}
+
+function getStatesAsync(path) {
+    return new Promise(resolve => {
+        conn.emit('getStates', path, (err, data)=>{
+            resolve(data);
         });
     });
 }
