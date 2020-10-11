@@ -2,196 +2,208 @@
 
 // https://github.com/Jey-Cee/iobroker-drones
 
-//const os = require('os');
+
+/******************************
+ * Set ip address and port from ioBroker socket-io adapter instance settings
+ ******************************/
+const ip = '10.10.0.165';
+const port = 9090;
+
+/**********************************
+ * Don't change any code below here
+ **********************************/
+
 const fs = require('fs');
 const ioClient = require('socket.io-client');
 const exec = require('child_process').exec;
 const constants = require(__dirname + '/lib/constants');
 
-const ns = 'drones';
-const instance = '0';
+const ns = 'drones';  // Namespace for ioBroker objects
+const instance = '0'; // ioBroker objects instance number
+
+
+/**
+ * System information, which is also kept in /lib/system.json
+ * Example: {arch: "x64", hostname: "XYZ", platform: "win32", distribution: "windows", type: "Windows_NT", 
+ *           memory: 15000.5, cpu: "Intel(R) Core(TM) ..", cores: 4, cpu_speed: 2500}
+ */
+let systemInfo = {}; 
+
+// Distribution specific functions, from /lib/ubuntu.js, /lib/windows.js, etc.
 let funcs;
 
-//some information
-let arch, hostname, platform, type, distribution, memory, cpu, cores, cpu_speed;
-const ip = '10.10.0.165';
-const port = 9090;
+// ioBroker socket io connection
+let conn;
 
 
-fs.open(__dirname + '/lib/system.json', 'r', (err, fd) => {
-    if(err){
-        const sys = require(__dirname + '/lib/getOSinfo');
-        sys.get((result)=>{
-
-            if(result === 'Ready'){
-                readSystem((result)=>{
-                    const createService = require(__dirname + '/lib/createService');
-                    createService.register(distribution);
-                });
-
-            }
-
-        });
-    }else{
-        readSystem();
-    }
-});
-
-function readSystem(callback){
-    const sysinfo = fs.readFile(__dirname + '/lib/system.json', 'utf8', (err, data)=>{
-        if(err){
-            console.log(err);
-        }
-        sysInfo(data, (result)=>{
-            switch(distribution){
-                case 'ubuntu':
-                    funcs = require(__dirname + '/lib/ubuntu');
-                    break;
-                case 'debian':
-                    funcs = require(__dirname + '/lib/debian');
-                    break;
-                case '7':
-                    funcs = require(__dirname + '/lib/android_7');
-                    break;
-                case 'windows':
-                    funcs = require(__dirname + '/lib/windows');
-                    break;
-
-            }
-            return('Ready');
-        });
-    });
-    if(typeof callback === 'function'){
-        callback(sysinfo);
-    }
-
-}
-
-function sysInfo(data, callback){
-    const json = JSON.parse(data);
-    arch = json['arch'];
-    hostname = json['hostname'];
-    platform = json['platform'];
-    type = json['type'];
-    distribution = json['distribution'];
-    memory = json['memory'];
-    cpu = json['cpu'];
-    cores = json['n_cores'];
-    cpu_speed = json['cpu_speed'];
-    callback('Ready');
-}
-
-process.on('SIGTERM', ()=>{
-    console.log('System is shutting down');
-    conn.emit('setState', ns + '.0.' + hostname + '.info.connected', false);
-    process.exit();
-});
-
-const conn = ioClient.connect('http://' + ip + ':' + port, {
-    query: 'key=nokey',
-    'reconnection limit': 10000,
-    'max reconnection attempts': Infinity
-});
-
-conn.on('connect', ()=>{
-    init();
-});
-
-conn.on('connect_error', (error)=>{
-    console.error(`Error: ${error} - Please check if ip ('${ip}') and port('${port}') matches with socketio adapter settings.`);
-    conn.emit('setState', ns + '.0.' + hostname + '.info.connected', false);
-});
-
-conn.on('error', (error) => {
-    console.log('Error: ' + error);
-});
-
-conn.on('event', (data)=>{
-    console.log('Data: ' + data);
-});
-
-
-
-conn.on('ping', () => {
-    conn.emit('setState', ns +'.0.' + hostname + '.info.connected', {val: true, expire: 51});
-});
-
-conn.on('pong', (latency) => {
-    console.log('Pong: ' + latency);
-});
-
-conn.on('objectChange', (id, obj)=>{
-    console.log('objectChange: ' + id + ' ' + obj);
-})
-
-conn.on('stateChange', (id, state)=>{
-    console.log(id);
-    const path = ns + '.0.' + hostname + '.';
-
-    for (const cmd in constants.commands) {
-        if (distribution in constants.commands[cmd]) {
-            if(path + cmd === id && state.val === true) {
-                const osCommand = constants.commands[cmd][distribution];
-                command(osCommand);
-            }
-        }
-    }
-
-    switch(id){
-        case path + 'command':
-            command(state.val);
-            break;
-        /*
-        case path + 'shutdown':
-            if(state.val === true){
-                command('shutdown now');
-            }
-            break;
-        case path + 'reboot':
-            if(state.val === true){
-                command('shutdown -r now', (result) => {
-                    if (result === 'Error') {
-                        command('reboot');
-                    }
-                });
-            }
-            break;
-        */
-        case path + 'audio.mute':
-            // mute();
-            break;
-    }
-    if (state) console.log('stateChange: ' + id + ' ' + state);
-});
-
-
-
-async function init(){
+init();
+async function init() {
 
     try {
 
-        const path = `${ns}.${instance}.${hostname}`;
+        /**
+         * Get system info for global variable 'systemInfo'
+         */
+        if (await fileExistsAsync(__dirname + '/lib/system.json', fs.constants.F_OK)) {
+            // system.json exists, so prepare current system
+            const readFileRet = await readFileAsync(__dirname + '/lib/system.json', 'utf8');
+            if (!readFileRet) {
+                throw('Could not get /lib/system.json contents');
+            } else {
+                systemInfo = JSON.parse(readFileRet);
+            }
+        } else {
+            // system.json does not exist.
+            // Get current system config and create a new system.json
+            console.log('system.json does not exist, so we create it.');
+            const sys = require(__dirname + '/lib/getOSinfo');
+            const res = await sys.getInfoAsync();
+            if (!res) throw(`Could not get system information.`);
+            systemInfo = res;
+        }
 
-        conn.emit('name', hostname);
+        /**
+         * Get distribution specific functions for global variable 'funcs'
+         */
+        switch(systemInfo.distribution){
+            case 'ubuntu':
+                funcs = require(__dirname + '/lib/ubuntu');
+                break;
+            case 'debian':
+                funcs = require(__dirname + '/lib/debian');
+                break;
+            case '7':
+                funcs = require(__dirname + '/lib/android_7');
+                break;
+            case 'windows':
+                funcs = require(__dirname + '/lib/windows');
+                break;
+        }
 
-        await createObjectsAsync();
+        /**
+         * createService
+         * TODO: currently only covering ubuntu, requires extension.
+         *       Also: looks like we need this as "await".
+         */
+        const createService = require(__dirname + '/lib/createService');
+        createService.register(systemInfo.distribution);
 
-        conn.emit('setState', path + '.info.connected', {val: true, expire: 51});
+        /**
+         * Connect with ioBroker socket-io adapter
+         */
+        conn = ioClient.connect('http://' + ip + ':' + port, {
+            query: 'key=nokey',
+            'reconnection limit': 10000,
+            'max reconnection attempts': Infinity
+        });        
+        
+        /**
+         * Once connected:
+         */        
+        conn.on('connect', ()=>{
 
-        conn.emit('subscribe', `${path}.*`);
+            ioBrokerInit();
+
+            conn.on('connect_error', (error)=>{
+                console.error(`Error: ${error} - Please check if ip ('${ip}') and port('${port}') matches with socketio adapter settings.`);
+                conn.emit('setState', ns + '.0.' + systemInfo.hostname + '.info.connected', false);
+            });
+            
+            conn.on('error', (error) => {
+                console.log('Error: ' + error);
+            });
+            
+            conn.on('event', (data)=>{
+                console.log('Data: ' + data);
+            });
+            
+            conn.on('ping', () => {
+                conn.emit('setState', ns +'.0.' + systemInfo.hostname + '.info.connected', {val: true, expire: 51});
+            });
+            
+            conn.on('pong', (latency) => {
+                console.log('Pong: ' + latency);
+            });
+            
+            conn.on('objectChange', (id, obj)=>{
+                console.log('objectChange: ' + id + ' ' + obj);
+            });
+            
+            conn.on('stateChange', (id, state)=>{
+                console.log(id);
+                const path = ns + '.0.' + systemInfo.hostname + '.';
+            
+                for (const cmd in constants.commands) {
+                    if (systemInfo.distribution in constants.commands[cmd]) {
+                        if(path + cmd === id && state.val === true) {
+                            const osCommand = constants.commands[cmd][systemInfo.distribution];
+                            command(osCommand);
+                        }
+                    }
+                }
+            
+                switch(id){
+                    case path + 'command':
+                        command(state.val);
+                        break;
+                    /*
+                    case path + 'shutdown':
+                        if(state.val === true){
+                            command('shutdown now');
+                        }
+                        break;
+                    case path + 'reboot':
+                        if(state.val === true){
+                            command('shutdown -r now', (result) => {
+                                if (result === 'Error') {
+                                    command('reboot');
+                                }
+                            });
+                        }
+                        break;
+                    */
+                    case path + 'audio.mute':
+                        // mute();
+                        break;
+                }
+                if (state) console.log('stateChange: ' + id + ' ' + state);
+            });
+            
+            process.on('SIGTERM', ()=>{
+                console.log('System is shutting down');
+                conn.emit('setState', ns + '.0.' + systemInfo.hostname + '.info.connected', false);
+                process.exit();
+            });
+            
+        });
+
 
     } catch (error) {
-        console.error(`init() Unexpected error: '${error}'`);
+        dumpError(`getSystemInformation()`, error);
     }
 
 }
 
+async function ioBrokerInit(){
+    try {
+        const path = `${ns}.${instance}.${systemInfo.hostname}`;
+        conn.emit('name', systemInfo.hostname);
+        await createObjectsAsync();
+        conn.emit('setState', path + '.info.connected', {val: true, expire: 51});
+        conn.emit('subscribe', `${path}.*`);
+    } catch (error) {
+        dumpError(`init() Unexpected error`, error);
+    }
+}
+
+
+
 async function createObjectsAsync() {
 
-    const path = `${ns}.${instance}.${hostname}`;
+    const path = `${ns}.${instance}.${systemInfo.hostname}`;
     const statePaths = [];
     if (! await getObjectAsync(path)) {
-        await setObjectAsync(path, {'type': 'device', 'common': {'name': hostname, 'role': 'drone'}, 'native': {}});
+        await setObjectAsync(path, {'type': 'device', 'common': {'name': systemInfo.hostname, 'role': 'drone'}, 'native': {}});
     }
 
     const objectsToProcess = [
@@ -201,7 +213,7 @@ async function createObjectsAsync() {
     ];
     for (const cmd in constants.commands) {
         const obj = constants.commands[cmd];
-        if (distribution in obj) {
+        if (systemInfo.distribution in obj) {
             objectsToProcess.push({id: path + '.' + cmd, obj:{'type': 'state', 'common': {'name': obj.name, 'role': 'button', 'type': 'boolean', 'read': true, 'write': true, 'def': false}, 'native': {}}});
         }
     }
@@ -241,36 +253,110 @@ function command(cmd, callback=undefined) {
         if(stdout){
             const answer = stdout.trim();
             console.log('stdout: ' + answer);
-            conn.emit('setState', ns +'.0.' + hostname + '.cmd_answer', answer);
+            conn.emit('setState', ns +'.0.' + systemInfo.hostname + '.cmd_answer', answer);
         }else if(stderr){
             console.log('stderr: ' + stderr);
             callback && callback('Error');
-            conn.emit('setState', ns +'.0.' + hostname + '.cmd_answer', 'Error: ' + stderr);
+            conn.emit('setState', ns +'.0.' + systemInfo.hostname + '.cmd_answer', 'Error: ' + stderr);
         }
     });
 }
 
+/**
+ * Promise Wrapping
+ */
+
+
+/**
+ * @param {string} path - File path
+ * @param {object|string} opt - Options, see https://nodejs.org/api/fs.html#fs_fs_readfile_path_options_callback
+ * @return {Promise<string|null>} string if successful, null if not.
+ */
+function readFileAsync(path, opt) {
+    return new Promise((resolve, reject) => {
+        fs.readFile(path, opt, (err, data) => {
+            if (err) {
+                console.error(`readFileAsync(): ` + err);
+                reject(null);
+            } else {
+                resolve(data.toString());
+            }
+        });            
+    });
+}
+
+
+function fileExistsAsync(path, opt) {
+    return new Promise((resolve) => {
+        fs.access(path, opt, (err) => {
+            if (err) {
+                resolve(false);
+            } else {
+                resolve(true);
+            }
+        });
+    });
+}
 
 function getObjectAsync(path) {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
         conn.emit('getObject', path, (err, data)=>{
-            resolve(data);
+            if (err) {
+                reject(err);
+            } else {
+                resolve(data);
+            }
         });
     });
 }
 
 function setObjectAsync(path, obj) {
-    return new Promise(resolve => {
-        conn.emit('setObject', path, obj, ()=>{
-            resolve();
+    return new Promise((resolve, reject) => {
+        conn.emit('setObject', path, obj, (err)=>{
+            if (err) {
+                reject(err);
+            } else {
+                resolve();
+            }
         });
     });
 }
 
 function getStatesAsync(path) {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
         conn.emit('getStates', path, (err, data)=>{
-            resolve(data);
+            if (err) {
+                reject(err);
+            } else {
+                resolve(data);
+            }
         });
     });
+}
+
+
+/**
+ * Error Message to Log. Handles error object being provided.
+ *
+ * @param {string} msg               - (intro) message of the error
+ * @param {*}      [error=undefined] - Optional: Error object or string
+ */
+function dumpError(msg, error=undefined) {
+    if (!error) {
+        console.error(msg);
+    } else {
+        if (typeof error === 'object') {
+            if (error.stack) {
+                console.error(`${msg} – ${error.stack}`);
+            } else if (error.message) {
+                console.error(`${msg} – ${error.message}`);
+            } else {
+                console.error(`${msg} – ${JSON.stringify(error)}`);
+            }
+        } else if (typeof error === 'string') {
+            console.error(`${msg} – ${error}`);
+        } else {
+            console.error(`[dumpError()] : wrong error argument: ${JSON.stringify(error)}`);
+        }
+    }
 }
