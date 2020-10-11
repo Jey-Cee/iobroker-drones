@@ -21,6 +21,9 @@ const constants = require(__dirname + '/lib/constants');
 const ns = 'drones';  // Namespace for ioBroker objects
 const instance = '0'; // ioBroker objects instance number
 
+// If last change of lib/system.json is older than this number of hours, file will be updated.
+const systemJsonExpiration = 240; // in hours
+
 
 /**
  * System information, which is also kept in /lib/system.json
@@ -45,15 +48,38 @@ async function init() {
          * Get system info for global variable 'systemInfo'
          */
         if (await fileExistsAsync(__dirname + '/lib/system.json', fs.constants.F_OK)) {
-            // system.json exists, so prepare current system
-            const readFileRet = await readFileAsync(__dirname + '/lib/system.json', 'utf8');
-            if (!readFileRet) {
-                throw('Could not get /lib/system.json contents');
+            // -- File 'system.json' exists
+        
+            // Check last modified date
+            const fileStats = await getFileStatsAsync(__dirname + '/lib/system.json'); //  instance of JavaScript Date
+            if(fileStats===null) throw(`File 'lib/system.json' exists, but could not get any file information.`);
+            console.log(`lib/system.json: Date last modified: ${fileStats.mtime}`);
+            const lastModifiedTs = fileStats.mtime.getTime();
+            // compare
+            const hoursAgo = Date.now() - 1000*60*60*systemJsonExpiration;
+            if (lastModifiedTs > hoursAgo) {
+                // No update needed, so we read current config.
+                console.log(`system.json is newer than than ${systemJsonExpiration} hours, so not being updated.`);
+                // prepare current system
+                const readFileRet = await readFileAsync(__dirname + '/lib/system.json', 'utf8');
+                if (!readFileRet) {
+                    throw('Could not get /lib/system.json contents');
+                } else {
+                    systemInfo = JSON.parse(readFileRet);
+                }
             } else {
-                systemInfo = JSON.parse(readFileRet);
+                // We need to update
+                // TODO: this is redundant to }else{ below
+                console.log(`Update system.json, since file is older than ${systemJsonExpiration} hours.`);
+                const sys = require(__dirname + '/lib/getOSinfo');
+                const res = await sys.getInfoAsync();
+                if (!res) throw(`Could not get system information.`);
+                systemInfo = res;                
             }
+
         } else {
-            // system.json does not exist.
+            // -- File 'system.json' does not exist.
+
             // Get current system config and create a new system.json
             console.log('system.json does not exist, so we create it.');
             const sys = require(__dirname + '/lib/getOSinfo');
@@ -65,19 +91,10 @@ async function init() {
         /**
          * Get distribution specific functions for global variable 'funcs'
          */
-        switch(systemInfo.distribution){
-            case 'ubuntu':
-                funcs = require(__dirname + '/lib/ubuntu');
-                break;
-            case 'debian':
-                funcs = require(__dirname + '/lib/debian');
-                break;
-            case '7':
-                funcs = require(__dirname + '/lib/android_7');
-                break;
-            case 'windows':
-                funcs = require(__dirname + '/lib/windows');
-                break;
+        if (await fileExistsAsync(`${__dirname}/lib/${systemInfo.distribution}.js`, fs.constants.F_OK)) {
+            funcs = require(`${__dirname}/lib/${systemInfo.distribution}.js`);
+        } else {
+            console.warn(`No distribution specific module found for '${systemInfo.distribution}'`);
         }
 
         /**
@@ -188,9 +205,9 @@ async function ioBrokerInit(){
     try {
         const path = `${ns}.${instance}.${systemInfo.hostname}`;
         conn.emit('name', systemInfo.hostname);
-        await createObjectsAsync();
+        await createObjectsAsync(); // create and update ioBroker objects
         conn.emit('setState', path + '.info.connected', {val: true, expire: 51});
-        conn.emit('subscribe', `${path}.*`);
+        conn.emit('subscribe', `${path}.*`); // TODO: Exclude objects: info.connected and cmd_answer
     } catch (error) {
         dumpError(`init() Unexpected error`, error);
     }
@@ -280,6 +297,23 @@ function readFileAsync(path, opt) {
                 reject(null);
             } else {
                 resolve(data.toString());
+            }
+        });            
+    });
+}
+
+/**
+ * @param {string} path - File path
+ * @return {Promise<object|null>} object with stats if successful, null if not.
+ */
+function getFileStatsAsync(path) {
+    return new Promise((resolve, reject) => {
+        fs.stat(path, (err, stats) => {
+            if (err) {
+                console.error(`getFileStats(): ` + err);
+                reject(null);
+            } else {
+                resolve(stats);
             }
         });            
     });
