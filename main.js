@@ -309,11 +309,11 @@ function command(cmd, callback=undefined) {
         if(stdout){
             const answer = stdout.trim();
             console.log('stdout: ' + answer);
-            setStateAsync(`${ns}.0.${systemInfo.hostname}cmd_answer`, {val: answer, ack:true});
+            setStateAsync(`${ns}.0.${systemInfo.hostname}.cmd_answer`, {val: answer, ack:true});
         }else if(stderr){
             console.log('stderr: ' + stderr);
             callback && callback('Error');
-            setStateAsync(`${ns}.0.${systemInfo.hostname}cmd_answer`, {val: 'Error: ' + stderr, ack:true});
+            setStateAsync(`${ns}.0.${systemInfo.hostname}.cmd_answer`, {val: 'Error: ' + stderr, ack:true});
         }
     });
 }
