@@ -123,7 +123,7 @@ async function init() {
 
             conn.on('connect_error', (error)=>{
                 console.error(`Error: ${error} - Please check if ip ('${ip}') and port('${port}') matches with socketio adapter settings.`);
-                conn.emit('setState', ns + '.0.' + systemInfo.hostname + '.info.connected', false);
+                setStateAsync(`${ns}.0.${systemInfo.hostname}.info.connected`, {val: false, ack:true});
             });
             
             conn.on('error', (error) => {
@@ -135,7 +135,7 @@ async function init() {
             });
             
             conn.on('ping', () => {
-                conn.emit('setState', ns +'.0.' + systemInfo.hostname + '.info.connected', {val: true, expire: 51});
+                setStateAsync(`${ns}.0.${systemInfo.hostname}.info.connected`, {val: true, ack:true, expire: 51});
             });
             
             conn.on('pong', (latency) => {
@@ -188,7 +188,7 @@ async function init() {
             
             process.on('SIGTERM', ()=>{
                 console.log('System is shutting down');
-                conn.emit('setState', ns + '.0.' + systemInfo.hostname + '.info.connected', false);
+                setStateAsync(`${ns}.0.${systemInfo.hostname}.info.connected`, {val: false, ack:true});
                 process.exit();
             });
             
@@ -204,13 +204,12 @@ async function init() {
 async function ioBrokerInit(){
     try {
 
-        const path = `${ns}.${instance}.${systemInfo.hostname}`;
         conn.emit('name', systemInfo.hostname);
 
         // create and update ioBroker objects, and get array of states paths to subscribe to
         const statesToSubscribe = await createObjectsAsync(); 
 
-        conn.emit('setState', path + '.info.connected', {val: true, expire: 51});
+        setStateAsync(`${ns}.0.${systemInfo.hostname}.info.connected`, {val: true, ack:true, expire: 51});
 
         // Subscribe to states
         for (const path of statesToSubscribe) {
@@ -258,21 +257,8 @@ async function createObjectsAsync() {
 
     // System info states
     for (const key in systemInfo) {
-        let value = systemInfo[key];
-        let valueType;
-        if (value===undefined || value===null) {
-            console.warn(`Value of system info '${key}' is undefined or null, so no 'info.${key} state will be created.`);
-            valueType = null;
-        } else if (['boolean','string','number'].indexOf(typeof value) !== -1) {
-            valueType = typeof value;
-        } else if (typeof value === 'object') {
-            value = JSON.stringify(value);
-            valueType = 'string';
-        } else {
-            console.warn(`Type '${typeof value}' of system info '${key}' is not supported, so no info state will be created.`);
-            valueType = null;
-        }
-        if (valueType !== null) objectsToProcess.push({id: path + '.info.' + key, obj:{type:'state', common: {name: key, role:'state', type: valueType, read: true, write: false, def:value}, native: {}}});        
+        const stateValObj = getStateValueType(key, systemInfo[key]);
+        if (stateValObj.type !== null) objectsToProcess.push({id: path + '.info.' + key, obj:{type:'state', common: {name: key, role:'state', type: stateValObj.type, read: true, write: false, def:stateValObj.val}, native: {}}});        
     }
 
     // create objects
@@ -299,7 +285,16 @@ async function createObjectsAsync() {
             });
         }
     }
+
+    // Update system info states.
+    // TODO: check if this is really needed after every restart, or only if lib/system.json was updated
+    for (const key in systemInfo) {
+        const stateValObj = getStateValueType(key, systemInfo[key]);
+        if (stateValObj.type !== null) await setStateAsync(path + '.info.' + key, stateValObj.val);
+    }
+
     return statesToSubscribe;
+
 }
 
 
@@ -314,14 +309,42 @@ function command(cmd, callback=undefined) {
         if(stdout){
             const answer = stdout.trim();
             console.log('stdout: ' + answer);
-            conn.emit('setState', ns +'.0.' + systemInfo.hostname + '.cmd_answer', answer);
+            setStateAsync(`${ns}.0.${systemInfo.hostname}cmd_answer`, {val: answer, ack:true});
         }else if(stderr){
             console.log('stderr: ' + stderr);
             callback && callback('Error');
-            conn.emit('setState', ns +'.0.' + systemInfo.hostname + '.cmd_answer', 'Error: ' + stderr);
+            setStateAsync(`${ns}.0.${systemInfo.hostname}cmd_answer`, {val: 'Error: ' + stderr, ack:true});
         }
     });
 }
+
+
+
+/**
+ * Checks a given state value, and returns the corrected value and the associated type
+ * @param {string} state - for logging only
+ * @param {*} value - state value to check
+ * @return {object} - {val:<state value>, type:<type or null in case of errors>}
+ */
+function getStateValueType(state, value) {
+
+    let valueType;
+    if (value===undefined || value===null) {
+        console.warn(`State value of '${state}' is undefined or null.`);
+        valueType = null;
+    } else if (['boolean','string','number'].indexOf(typeof value) !== -1) {
+        valueType = typeof value;
+    } else if (typeof value === 'object') {
+        value = JSON.stringify(value);
+        valueType = 'string';
+    } else {
+        console.warn(`Type '${typeof value}' of state '${state}' is not supported.`);
+        valueType = null;
+    }
+    return {val:value, type:valueType};
+
+}
+
 
 /**
  * Promise Wrapping
@@ -337,7 +360,7 @@ function readFileAsync(path, opt) {
     return new Promise((resolve, reject) => {
         fs.readFile(path, opt, (err, data) => {
             if (err) {
-                console.error(`readFileAsync(): ` + err);
+                dumpError('readFileAsync()', err);
                 reject(null);
             } else {
                 resolve(data.toString());
@@ -354,7 +377,7 @@ function getFileStatsAsync(path) {
     return new Promise((resolve, reject) => {
         fs.stat(path, (err, stats) => {
             if (err) {
-                console.error(`getFileStats(): ` + err);
+                dumpError('getFileStats()', err);
                 reject(null);
             } else {
                 resolve(stats);
@@ -407,6 +430,25 @@ function getStatesAsync(path) {
                 reject(err);
             } else {
                 resolve(data);
+            }
+        });
+    });
+}
+
+/**
+ * Set new value to a ioBroker state object
+ * @param {string} path - state path
+ * @param {*} val - state val to be set - https://github.com/ioBroker/ioBroker.socketio#setstate
+ * @return {Promise<boolean>} - true if successful, false if not
+ */
+function setStateAsync(path, val) {
+    return new Promise((resolve, reject) => {
+        conn.emit('setState', path, val, (err)=>{
+            if (err) {
+                dumpError('setStateAsync()', err);
+                reject(false);
+            } else {
+                resolve(true);
             }
         });
     });
