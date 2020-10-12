@@ -203,43 +203,86 @@ async function init() {
 
 async function ioBrokerInit(){
     try {
+
         const path = `${ns}.${instance}.${systemInfo.hostname}`;
         conn.emit('name', systemInfo.hostname);
-        await createObjectsAsync(); // create and update ioBroker objects
+
+        // create and update ioBroker objects, and get array of states paths to subscribe to
+        const statesToSubscribe = await createObjectsAsync(); 
+
         conn.emit('setState', path + '.info.connected', {val: true, expire: 51});
-        conn.emit('subscribe', `${path}.*`); // TODO: Exclude objects: info.connected and cmd_answer
+
+        // Subscribe to states
+        for (const path of statesToSubscribe) {
+            conn.emit('subscribe', path);
+        }
+
     } catch (error) {
         dumpError(`init() Unexpected error`, error);
     }
 }
 
-
-
+/**
+ * @return {Promise<array>} - returns states we need to subscribe to on changes
+ */
 async function createObjectsAsync() {
 
     const path = `${ns}.${instance}.${systemInfo.hostname}`;
     const statePaths = [];
+    const objectsToProcess = [];
+    const statesToSubscribe = [];
+    
+    // create top level device object
     if (! await getObjectAsync(path)) {
         await setObjectAsync(path, {'type': 'device', 'common': {'name': systemInfo.hostname, 'role': 'drone'}, 'native': {}});
     }
 
-    const objectsToProcess = [
-        {id: path + '.info.connected', obj:{'type': 'state', 'common': {'name': 'Connected', 'role': 'indicator.state', 'type': 'boolean', 'read': true, 'write': false}, 'native': {}} },
-        {id: path + '.command', obj:{'type': 'state', 'common': {'name': 'Command', 'role': 'indicator.state', 'type': 'string', 'read': true, 'write': true}, 'native': {}} },
-        {id: path + '.cmd_answer', obj:{'type': 'state', 'common': {'name': 'Command', 'role': 'indicator.state', 'type': 'string', 'read': true, 'write': false}, 'native': {}} },
-    ];
+    /**
+     * Prepare states. 
+     * subscribe:true = we need to subscribe to that state and will be returned (as array of state paths)
+     */ 
+    // info.connected
+    objectsToProcess.push({id: path + '.info.connected', obj:{'type': 'state', 'common': {'name': 'Connected', 'role': 'indicator.state', 'type': 'boolean', 'read': true, 'write': false}, 'native': {}} });
+
+    // state for sending user command and state cmd_answer for receiving result 
+    objectsToProcess.push({id: path + '.command', subscribe:true, obj:{'type': 'state', 'common': {'name': 'Command', 'role': 'indicator.state', 'type': 'string', 'read': true, 'write': true}, 'native': {}} });
+    objectsToProcess.push({id: path + '.cmd_answer', obj:{'type': 'state', 'common': {'name': 'Command', 'role': 'indicator.state', 'type': 'string', 'read': true, 'write': false}, 'native': {}} });
+    
+    // commands 
     for (const cmd in constants.commands) {
         const obj = constants.commands[cmd];
         if (systemInfo.distribution in obj) {
-            objectsToProcess.push({id: path + '.' + cmd, obj:{'type': 'state', 'common': {'name': obj.name, 'role': 'button', 'type': 'boolean', 'read': true, 'write': true, 'def': false}, 'native': {}}});
+            objectsToProcess.push({id: path + '.' + cmd, subscribe:true, obj:{'type': 'state', 'common': {'name': obj.name, 'role': 'button', 'type': 'boolean', 'read': true, 'write': true, 'def': false}, 'native': {}}});
         }
     }
 
+    // System info states
+    for (const key in systemInfo) {
+        let value = systemInfo[key];
+        let valueType;
+        if (value===undefined || value===null) {
+            console.warn(`Value of system info '${key}' is undefined or null, so no 'info.${key} state will be created.`);
+            valueType = null;
+        } else if (['boolean','string','number'].indexOf(typeof value) !== -1) {
+            valueType = typeof value;
+        } else if (typeof value === 'object') {
+            value = JSON.stringify(value);
+            valueType = 'string';
+        } else {
+            console.warn(`Type '${typeof value}' of system info '${key}' is not supported, so no info state will be created.`);
+            valueType = null;
+        }
+        if (valueType !== null) objectsToProcess.push({id: path + '.info.' + key, obj:{type:'state', common: {name: key, role:'state', type: valueType, read: true, write: false, def:value}, native: {}}});        
+    }
+
+    // create objects
     for (const stateObj of objectsToProcess) {
         statePaths.push(stateObj.id);
         if (! await getObjectAsync(stateObj.id)) {
             await setObjectAsync(stateObj.id, stateObj.obj);
         }
+        // for subscriptions
+        if (stateObj.subscribe) statesToSubscribe.push(stateObj.id);
     }
 
     // Delete all objects which are no longer used.
@@ -256,6 +299,7 @@ async function createObjectsAsync() {
             });
         }
     }
+    return statesToSubscribe;
 }
 
 
