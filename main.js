@@ -208,10 +208,31 @@ async function ioBrokerInit(){
 
         // create and update ioBroker objects, and get array of states paths to subscribe to
         const statesToSubscribe = await createObjectsAsync(); 
-
         setStateAsync(`${ns}.0.${systemInfo.hostname}.info.connected`, {val: true, ack:true, expire: 51});
 
-        // Subscribe to states
+        /**
+         * Update native key of ioBroker device object - see https://forum.iobroker.net/topic/36837/das-volle-potential-der-objekte-nutzen
+         * 
+         * !! This is a workaround until PR #35 is in stable - https://github.com/ioBroker/ioBroker.socketio/pull/35
+         * Once in stable of socketio adapter, let's use: extendObjectAsync(`${ns}.0.${systemInfo.hostname}`, updateNative);
+         * TODO: check if this is really needed after every restart, or only if lib/system.json was updated
+         */
+        const obj = await getObjectAsync(`${ns}.0.${systemInfo.hostname}`);
+        if(!obj) throw(`Could not get object '${ns}.0.${systemInfo.hostname}'`);
+        for (const key in systemInfo) {
+            const stateValObj = getStateValueType(key, systemInfo[key]);
+            if (stateValObj.type !== null) {
+                obj.native[key] = stateValObj.val;
+            }
+        }
+        if (!await setObjectAsync(`${ns}.0.${systemInfo.hostname}`, obj)) {
+            throw(`Could not set object '${ns}.0.${systemInfo.hostname}'`);
+        }
+
+        
+        /**
+         * Subscribe to states
+         */
         for (const path of statesToSubscribe) {
             conn.emit('subscribe', path);
         }
@@ -290,7 +311,7 @@ async function createObjectsAsync() {
     // TODO: check if this is really needed after every restart, or only if lib/system.json was updated
     for (const key in systemInfo) {
         const stateValObj = getStateValueType(key, systemInfo[key]);
-        if (stateValObj.type !== null) await setStateAsync(path + '.info.' + key, stateValObj.val);
+        if (stateValObj.type !== null) await setStateAsync(path + '.info.' + key, {val: stateValObj.val, ack:true});
     }
 
     return statesToSubscribe;
@@ -371,7 +392,7 @@ function readFileAsync(path, opt) {
 
 /**
  * @param {string} path - File path
- * @return {Promise<object|null>} object with stats if successful, null if not.
+ * @return {Promise<object|null>} object with states if successful, null if not.
  */
 function getFileStatsAsync(path) {
     return new Promise((resolve, reject) => {
@@ -399,11 +420,16 @@ function fileExistsAsync(path, opt) {
     });
 }
 
+/**
+ * @param {string} path - File path
+ * @return {Promise<object|null>} object if successful, null if not.
+ */
 function getObjectAsync(path) {
     return new Promise((resolve, reject) => {
         conn.emit('getObject', path, (err, data)=>{
             if (err) {
-                reject(err);
+                dumpError('getObjectAsync()', err);
+                reject(null);
             } else {
                 resolve(data);
             }
@@ -411,13 +437,43 @@ function getObjectAsync(path) {
     });
 }
 
+/**
+ * extendObjectAsync - this will also update existing key values, so not only "extending".
+ * TODO: Activate once PR #35 is implemented and in stable - https://github.com/ioBroker/ioBroker.socketio/pull/35
+ * @param {string} path - Object path
+ * @param {object} objPart - object part to be set into object, like: {common:{name:'XYZ'}
+ * @return {Promise<true|false>} true if successful, false if not
+ */
+/*
+async function extendObjectAsync(path, objPart) {
+    return new Promise((resolve, reject) => {
+        // https://discordapp.com/channels/743167951875604501/743171252377616476/762360203878072391
+        conn.emit('extendObject', path, objPart, (err)=>{
+            if (err) {
+                dumpError('extendObjectAsync()', err);
+                reject(false);
+            } else {
+                resolve(true);
+            }
+        });
+    });
+}
+*/
+
+/**
+ * Set ioBroker state object
+ * @param {string} path - object path
+ * @param {object} obj - object to be set
+ * @return {Promise<boolean>} - true if successful, false if not
+ */
 function setObjectAsync(path, obj) {
     return new Promise((resolve, reject) => {
         conn.emit('setObject', path, obj, (err)=>{
             if (err) {
-                reject(err);
+                dumpError('setObjectAsync()', err);
+                reject(false);
             } else {
-                resolve();
+                resolve(true);
             }
         });
     });
