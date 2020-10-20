@@ -11,10 +11,8 @@ const fs = require('fs');
 const ioClient = require('socket.io-client');
 const exec = require('child_process').exec;
 const constants = require(__dirname + '/lib/constants');
-const config = require('dotenv').config();
-
-const ns = 'drones';  // Namespace for ioBroker objects
-const instance = '0'; // ioBroker objects instance number
+const readline = require('readline');
+require('dotenv').config();
 
 // If last change of lib/system.json is older than this number of hours, file will be updated.
 const systemJsonExpiration = 240; // in hours
@@ -117,8 +115,8 @@ async function init() {
             ioBrokerInit();
 
             conn.on('connect_error', (error)=>{
-                console.error(`Error: ${error} - Please check if ip ('${process.env.IP}') and port('${port}') matches with socketio adapter settings.`);
-                setStateAsync(`${ns}.0.${systemInfo.hostname}.info.connected`, {val: false, ack:true});
+                console.error(`Error: ${error} - Please check if ip ('${process.env.IP}') and port('${process.env.PORT}') matches with socketio adapter settings.`);
+                setStateAsync(`${process.env.NS}.${process.env.INSTANCE}.${systemInfo.hostname}.info.connected`, {val: false, ack:true});
             });
 
             conn.on('error', (error) => {
@@ -130,7 +128,7 @@ async function init() {
             });
 
             conn.on('ping', () => {
-                setStateAsync(`${ns}.0.${systemInfo.hostname}.info.connected`, {val: true, ack:true, expire: 51});
+                setStateAsync(`${process.env.NS}.${process.env.INSTANCE}.${systemInfo.hostname}.info.connected`, {val: true, ack:true, expire: 51});
             });
 
             conn.on('pong', (latency) => {
@@ -143,7 +141,7 @@ async function init() {
 
             conn.on('stateChange', (id, state)=>{
                 console.log(id);
-                const path = ns + '.0.' + systemInfo.hostname + '.';
+                const path = process.env.NS + '.0.' + systemInfo.hostname + '.';
 
                 for (const cmd in constants.commands) {
                     if (systemInfo.distribution in constants.commands[cmd]) {
@@ -183,7 +181,7 @@ async function init() {
 
             process.on('SIGTERM', ()=>{
                 console.log('System is shutting down');
-                setStateAsync(`${ns}.0.${systemInfo.hostname}.info.connected`, {val: false, ack:true});
+                setStateAsync(`${process.env.NS}.${process.env.INSTANCE}.${systemInfo.hostname}.info.connected`, {val: false, ack:true});
                 process.exit();
             });
 
@@ -203,25 +201,25 @@ async function ioBrokerInit(){
 
         // create and update ioBroker objects, and get array of states paths to subscribe to
         const statesToSubscribe = await createObjectsAsync();
-        setStateAsync(`${ns}.0.${systemInfo.hostname}.info.connected`, {val: true, ack:true, expire: 51});
+        setStateAsync(`${process.env.NS}.${process.env.INSTANCE}.${systemInfo.hostname}.info.connected`, {val: true, ack:true, expire: 51});
 
         /**
          * Update native key of ioBroker device object - see https://forum.iobroker.net/topic/36837/das-volle-potential-der-objekte-nutzen
          *
          * !! This is a workaround until PR #35 is in stable - https://github.com/ioBroker/ioBroker.socketio/pull/35
-         * Once in stable of socketio adapter, let's use: extendObjectAsync(`${ns}.0.${systemInfo.hostname}`, updateNative);
+         * Once in stable of socketio adapter, let's use: extendObjectAsync(`${process.env.NS}.${process.env.INSTANCE}.${systemInfo.hostname}`, updateNative);
          * TODO: check if this is really needed after every restart, or only if lib/system.json was updated
          */
-        const obj = await getObjectAsync(`${ns}.0.${systemInfo.hostname}`);
-        if(!obj) throw(`Could not get object '${ns}.0.${systemInfo.hostname}'`);
+        const obj = await getObjectAsync(`${process.env.NS}.${process.env.INSTANCE}.${systemInfo.hostname}`);
+        if(!obj) throw(`Could not get object '${process.env.NS}.${process.env.INSTANCE}.${systemInfo.hostname}'`);
         for (const key in systemInfo) {
             const stateValObj = getStateValueType(key, systemInfo[key]);
             if (stateValObj.type !== null) {
                 obj.native[key] = stateValObj.val;
             }
         }
-        if (!await setObjectAsync(`${ns}.0.${systemInfo.hostname}`, obj)) {
-            throw(`Could not set object '${ns}.0.${systemInfo.hostname}'`);
+        if (!await setObjectAsync(`${process.env.NS}.${process.env.INSTANCE}.${systemInfo.hostname}`, obj)) {
+            throw(`Could not set object '${process.env.NS}.${process.env.INSTANCE}.${systemInfo.hostname}'`);
         }
 
 
@@ -242,7 +240,7 @@ async function ioBrokerInit(){
  */
 async function createObjectsAsync() {
 
-    const path = `${ns}.${instance}.${systemInfo.hostname}`;
+    const path = `${process.env.NS}.${process.env.INSTANCE}.${systemInfo.hostname}`;
     const statePaths = [];
     const objectsToProcess = [];
     const statesToSubscribe = [];
@@ -325,11 +323,11 @@ function command(cmd, callback=undefined) {
         if(stdout){
             const answer = stdout.trim();
             console.log('stdout: ' + answer);
-            setStateAsync(`${ns}.0.${systemInfo.hostname}.cmd_answer`, {val: answer, ack:true});
+            setStateAsync(`${process.env.NS}.${process.env.INSTANCE}.${systemInfo.hostname}.cmd_answer`, {val: answer, ack:true});
         }else if(stderr){
             console.log('stderr: ' + stderr);
             callback && callback('Error');
-            setStateAsync(`${ns}.0.${systemInfo.hostname}.cmd_answer`, {val: 'Error: ' + stderr, ack:true});
+            setStateAsync(`${process.env.NS}.${process.env.INSTANCE}.${systemInfo.hostname}.cmd_answer`, {val: 'Error: ' + stderr, ack:true});
         }
     });
 }
