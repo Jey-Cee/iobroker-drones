@@ -3,12 +3,6 @@
 // https://github.com/Jey-Cee/iobroker-drones
 
 
-/******************************
- * Set ip address and port from ioBroker socket-io adapter instance settings
- ******************************/
-const ip = '10.10.0.165';
-const port = 9090;
-
 /**********************************
  * Don't change any code below here
  **********************************/
@@ -17,6 +11,7 @@ const fs = require('fs');
 const ioClient = require('socket.io-client');
 const exec = require('child_process').exec;
 const constants = require(__dirname + '/lib/constants');
+const config = require('dotenv').config();
 
 const ns = 'drones';  // Namespace for ioBroker objects
 const instance = '0'; // ioBroker objects instance number
@@ -27,10 +22,10 @@ const systemJsonExpiration = 240; // in hours
 
 /**
  * System information, which is also kept in /lib/system.json
- * Example: {arch: "x64", hostname: "XYZ", platform: "win32", distribution: "windows", type: "Windows_NT", 
+ * Example: {arch: "x64", hostname: "XYZ", platform: "win32", distribution: "windows", type: "Windows_NT",
  *           memory: 15000.5, cpu: "Intel(R) Core(TM) ..", cores: 4, cpu_speed: 2500}
  */
-let systemInfo = {}; 
+let systemInfo = {};
 
 // Distribution specific functions, from /lib/ubuntu.js, /lib/windows.js, etc.
 let funcs;
@@ -49,7 +44,7 @@ async function init() {
          */
         if (await fileExistsAsync(__dirname + '/lib/system.json', fs.constants.F_OK)) {
             // -- File 'system.json' exists
-        
+
             // Check last modified date
             const fileStats = await getFileStatsAsync(__dirname + '/lib/system.json'); //  instance of JavaScript Date
             if(fileStats===null) throw(`File 'lib/system.json' exists, but could not get any file information.`);
@@ -74,7 +69,7 @@ async function init() {
                 const sys = require(__dirname + '/lib/getOSinfo');
                 const res = await sys.getInfoAsync();
                 if (!res) throw(`Could not get system information.`);
-                systemInfo = res;                
+                systemInfo = res;
             }
 
         } else {
@@ -108,48 +103,48 @@ async function init() {
         /**
          * Connect with ioBroker socket-io adapter
          */
-        conn = ioClient.connect('http://' + ip + ':' + port, {
+        conn = ioClient.connect(`http://${process.env.IP}:${process.env.PORT}`, {
             query: 'key=nokey',
             'reconnection limit': 10000,
             'max reconnection attempts': Infinity
-        });        
-        
+        });
+
         /**
          * Once connected:
-         */        
+         */
         conn.on('connect', ()=>{
 
             ioBrokerInit();
 
             conn.on('connect_error', (error)=>{
-                console.error(`Error: ${error} - Please check if ip ('${ip}') and port('${port}') matches with socketio adapter settings.`);
+                console.error(`Error: ${error} - Please check if ip ('${process.env.IP}') and port('${port}') matches with socketio adapter settings.`);
                 setStateAsync(`${ns}.0.${systemInfo.hostname}.info.connected`, {val: false, ack:true});
             });
-            
+
             conn.on('error', (error) => {
                 console.log('Error: ' + error);
             });
-            
+
             conn.on('event', (data)=>{
                 console.log('Data: ' + data);
             });
-            
+
             conn.on('ping', () => {
                 setStateAsync(`${ns}.0.${systemInfo.hostname}.info.connected`, {val: true, ack:true, expire: 51});
             });
-            
+
             conn.on('pong', (latency) => {
                 console.log('Pong: ' + latency);
             });
-            
+
             conn.on('objectChange', (id, obj)=>{
                 console.log('objectChange: ' + id + ' ' + obj);
             });
-            
+
             conn.on('stateChange', (id, state)=>{
                 console.log(id);
                 const path = ns + '.0.' + systemInfo.hostname + '.';
-            
+
                 for (const cmd in constants.commands) {
                     if (systemInfo.distribution in constants.commands[cmd]) {
                         if(path + cmd === id && state.val === true) {
@@ -158,7 +153,7 @@ async function init() {
                         }
                     }
                 }
-            
+
                 switch(id){
                     case path + 'command':
                         command(state.val);
@@ -185,13 +180,13 @@ async function init() {
                 }
                 if (state) console.log('stateChange: ' + id + ' ' + state);
             });
-            
+
             process.on('SIGTERM', ()=>{
                 console.log('System is shutting down');
                 setStateAsync(`${ns}.0.${systemInfo.hostname}.info.connected`, {val: false, ack:true});
                 process.exit();
             });
-            
+
         });
 
 
@@ -207,12 +202,12 @@ async function ioBrokerInit(){
         conn.emit('name', systemInfo.hostname);
 
         // create and update ioBroker objects, and get array of states paths to subscribe to
-        const statesToSubscribe = await createObjectsAsync(); 
+        const statesToSubscribe = await createObjectsAsync();
         setStateAsync(`${ns}.0.${systemInfo.hostname}.info.connected`, {val: true, ack:true, expire: 51});
 
         /**
          * Update native key of ioBroker device object - see https://forum.iobroker.net/topic/36837/das-volle-potential-der-objekte-nutzen
-         * 
+         *
          * !! This is a workaround until PR #35 is in stable - https://github.com/ioBroker/ioBroker.socketio/pull/35
          * Once in stable of socketio adapter, let's use: extendObjectAsync(`${ns}.0.${systemInfo.hostname}`, updateNative);
          * TODO: check if this is really needed after every restart, or only if lib/system.json was updated
@@ -229,7 +224,7 @@ async function ioBrokerInit(){
             throw(`Could not set object '${ns}.0.${systemInfo.hostname}'`);
         }
 
-        
+
         /**
          * Subscribe to states
          */
@@ -251,24 +246,24 @@ async function createObjectsAsync() {
     const statePaths = [];
     const objectsToProcess = [];
     const statesToSubscribe = [];
-    
+
     // create top level device object
     if (! await getObjectAsync(path)) {
         await setObjectAsync(path, {'type': 'device', 'common': {'name': systemInfo.hostname, 'role': 'drone'}, 'native': {}});
     }
 
     /**
-     * Prepare states. 
+     * Prepare states.
      * subscribe:true = we need to subscribe to that state and will be returned (as array of state paths)
-     */ 
+     */
     // info.connected
     objectsToProcess.push({id: path + '.info.connected', obj:{'type': 'state', 'common': {'name': 'Connected', 'role': 'indicator.state', 'type': 'boolean', 'read': true, 'write': false}, 'native': {}} });
 
-    // state for sending user command and state cmd_answer for receiving result 
+    // state for sending user command and state cmd_answer for receiving result
     objectsToProcess.push({id: path + '.command', subscribe:true, obj:{'type': 'state', 'common': {'name': 'Command', 'role': 'indicator.state', 'type': 'string', 'read': true, 'write': true}, 'native': {}} });
     objectsToProcess.push({id: path + '.cmd_answer', obj:{'type': 'state', 'common': {'name': 'Command', 'role': 'indicator.state', 'type': 'string', 'read': true, 'write': false}, 'native': {}} });
-    
-    // commands 
+
+    // commands
     for (const cmd in constants.commands) {
         const obj = constants.commands[cmd];
         if (systemInfo.distribution in obj) {
@@ -279,7 +274,7 @@ async function createObjectsAsync() {
     // System info states
     for (const key in systemInfo) {
         const stateValObj = getStateValueType(key, systemInfo[key]);
-        if (stateValObj.type !== null) objectsToProcess.push({id: path + '.info.' + key, obj:{type:'state', common: {name: key, role:'state', type: stateValObj.type, read: true, write: false, def:stateValObj.val}, native: {}}});        
+        if (stateValObj.type !== null) objectsToProcess.push({id: path + '.info.' + key, obj:{type:'state', common: {name: key, role:'state', type: stateValObj.type, read: true, write: false, def:stateValObj.val}, native: {}}});
     }
 
     // create objects
@@ -301,7 +296,7 @@ async function createObjectsAsync() {
                 if(error) {
                     console.error(`Error deleting object '${statePath}': ${error}`);
                 } else {
-                    console.log(`Object '${statePath}' deleted, since command or option does no longer exist.'`);                    
+                    console.log(`Object '${statePath}' deleted, since command or option does no longer exist.'`);
                 }
             });
         }
@@ -322,7 +317,7 @@ async function createObjectsAsync() {
 /**
  * Execute a command
  * @param {string} cmd
- * @param {object} [callback=undefined] 
+ * @param {object} [callback=undefined]
  */
 function command(cmd, callback=undefined) {
     exec(cmd, (error, stdout, stderr)=>{
@@ -386,7 +381,7 @@ function readFileAsync(path, opt) {
             } else {
                 resolve(data.toString());
             }
-        });            
+        });
     });
 }
 
@@ -403,7 +398,7 @@ function getFileStatsAsync(path) {
             } else {
                 resolve(stats);
             }
-        });            
+        });
     });
 }
 
