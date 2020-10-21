@@ -16,7 +16,7 @@ Make sure nodejs v12.x is installed on your system.
 
 ### Ubuntu, Debian and derivates
 Open a Terminal and past this code into it:
-`sudo wget "https://raw.githubusercontent.com/Jey-Cee/iobroker-drones/master/install.sh" -O install.sh && sudo chmod +x install.sh && sudo ./install.sh`
+`cd /opt && sudo wget --no-cache "https://raw.githubusercontent.com/Jey-Cee/iobroker-drones/master/install.sh" -O install.sh && sudo chmod +x install.sh && sudo ./install.sh`
 
 This will download and install the drone, during the installation process you have to enter some things.
 Now the drone is installed as a sevice and starts on boot.
