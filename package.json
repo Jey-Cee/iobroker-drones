@@ -1,16 +1,11 @@
 {
   "name": "iobroker-drones",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Module to make your PC controllable via ioBroker",
-  "author": {
-    "name": "Jey Cee",
-    "email": "jey-cee@live.com"
-  },
+  "author": "Jey Cee <jey-cee@live.com>",
   "contributors": [
-    {
-      "name": "Jey Cee",
-      "email": "jey-cee@live.com"
-    }
+    "Jey Cee <jey-cee@live.com>",
+    "Mic-M"
   ],
   "homepage": "https://github.com/jey-cee/ioBroker-drones",
   "license": "MIT",
@@ -23,7 +18,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/jey-cee/ioBroker-drones"
+    "url": "git+https://github.com/jey-cee/ioBroker-drones.git"
   },
   "dependencies": {
     "socket.io-client": "^2.3.1",
@@ -34,10 +29,12 @@
   },
   "main": "main.js",
   "scripts": {
-    "test": "node node_modules/mocha/bin/mocha --exit"
+    "start": "node main.js"
   },
   "bugs": {
     "url": "https://github.com/jey-cee/ioBroker-drones/issues"
   },
-  "readmeFilename": "README.md"
+  "directories": {
+    "lib": "lib"
+  }
 }
