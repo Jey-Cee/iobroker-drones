@@ -8,13 +8,17 @@ This module is in an early development phase; please stay tuned and follow our p
 
 
 ## Installation
+The socketio adapter has to be installed on your ioBroker system.
+Make sure nodejs v12.x is installed on your system.
 
+### Windows
 **TO DO:** Describe installation windows
 
 ### Ubuntu, Debian and derivates
-Make sure nodejs v12.x is installed on your system.
+Open a Terminal and past this code into it:
+`sudo wget "https://raw.githubusercontent.com/Jey-Cee/iobroker-drones/master/install.sh" -O install.sh && sudo chmod +x install.sh && sudo ./install.sh`
 
-
+This will download and install the drone, during the installation process you have to enter some things.
 Now the drone is installed as a sevice and starts on boot.
 
 ## ioBroker Objects to control the end devices
