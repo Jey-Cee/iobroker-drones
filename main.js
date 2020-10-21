@@ -136,7 +136,7 @@ async function init() {
         if (await tools.fileExistsAsync(`${__dirname}/lib/${systemInfo.distribution}.js`, fs.constants.F_OK)) {
             funcs = require(`${__dirname}/lib/${systemInfo.distribution}.js`);
         } else {
-            console.warn(`No distribution specific module found for '${systemInfo.distribution}'`);
+            //console.warn(`No distribution specific module found for '${systemInfo.distribution}'`);
         }
 
         /**
@@ -145,7 +145,7 @@ async function init() {
          *       Also: looks like we need this as "await".
          */
         const createService = require(__dirname + '/lib/createService');
-        createService.register(systemInfo.distribution);
+        await createService.register(systemInfo.distribution);
 
         /**
          * Connect with ioBroker socket-io adapter
