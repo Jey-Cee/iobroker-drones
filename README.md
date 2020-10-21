@@ -9,8 +9,18 @@ This module is in an early development phase; please stay tuned and follow our p
 
 ## Installation
 
-**TO DO:** Describe installation
+**TO DO:** Describe installation windows
 
+### Ubuntu, Debian and derivates
+Make sure nodejs v12.x is installed on your system.
+
+1. `mkdir /opt/iobroker-drones`
+2. `cd /opt/iobroker-drones`
+3. `sudo npm install https://github.com/Jey-Cee/iobroker-drones`
+4. `sudo node main.js`
+5. Enter config details
+
+Now the drone is installed as a sevice and starts on boot.
 
 ## ioBroker Objects to control the end devices
 

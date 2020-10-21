@@ -11,7 +11,7 @@ const fs = require('fs');
 const ioClient = require('socket.io-client');
 const exec = require('child_process').exec;
 const constants = require(__dirname + '/lib/constants');
-const readline = require('readline');
+const tools = require(__dirname + '/lib/tools.js');
 require('dotenv').config();
 
 // If last change of lib/system.json is older than this number of hours, file will be updated.
@@ -43,16 +43,16 @@ async function init() {
      * Check if .env exists if it does ask the user for information and create it
      */
     try {
-        if (!await fileExistsAsync(__dirname + '/.env')) {
+        if (!await tools.fileExistsAsync(__dirname + '/.env')) {
             let config = '';
             //Create CLI
 
             //Ask the user for data
-            let input_ip = await readlineQuestionAsync('No configuration found! Please enter it now.\nWhere default is present you can leave empty if you want.\n\nIP for ioBroker: ');
+            let input_ip = await tools.readlineQuestionAsync('No configuration found! Please enter it now.\nWhere default is present you can leave empty if you want.\n\nIP for ioBroker: ');
             config += `IP=${input_ip}\n`;
             ip = input_ip;
 
-            let input_port = await readlineQuestionAsync('Socketio port (default: 8084):')
+            let input_port = await tools.readlineQuestionAsync('Socketio port (default: 8084):')
             if(input_port.length === 0) {
                 config += `PORT=8084\n`;
                 port = '8084';
@@ -61,7 +61,7 @@ async function init() {
                 port = input_port
             }
 
-            let input_ns = await readlineQuestionAsync('Namespace for ioBroker you want to use (default: drones):');
+            let input_ns = await tools.readlineQuestionAsync('Namespace for ioBroker you want to use (default: drones):');
             if (input_ns.length === 0) {
                 config += `NS=drones\n`;
                 ns = 'drones';
@@ -70,7 +70,7 @@ async function init() {
                 ns = input_ns;
             }
 
-            let input_instance = await readlineQuestionAsync('Instance number for ioBroker (default: 0): ');
+            let input_instance = await tools.readlineQuestionAsync('Instance number for ioBroker (default: 0): ');
             if (input_instance.length === 0) {
                 config += `INSTANCE=0\n`;
                 instance = 0;
@@ -81,7 +81,7 @@ async function init() {
             await fs.writeFileSync('.env', config);
         }
     } catch (error) {
-        dumpError(`check .env`, error);
+        tools.dumpError(`check .env`, error);
     }
 
     try {
@@ -89,11 +89,11 @@ async function init() {
         /**
          * Get system info for global variable 'systemInfo'
          */
-        if (await fileExistsAsync(__dirname + '/lib/system.json', fs.constants.F_OK)) {
+        if (await tools.fileExistsAsync(__dirname + '/lib/system.json', fs.constants.F_OK)) {
             // -- File 'system.json' exists
 
             // Check last modified date
-            const fileStats = await getFileStatsAsync(__dirname + '/lib/system.json'); //  instance of JavaScript Date
+            const fileStats = await tools.getFileStatsAsync(__dirname + '/lib/system.json'); //  instance of JavaScript Date
             if(fileStats===null) throw(`File 'lib/system.json' exists, but could not get any file information.`);
             console.log(`lib/system.json: Date last modified: ${fileStats.mtime}`);
             const lastModifiedTs = fileStats.mtime.getTime();
@@ -103,7 +103,7 @@ async function init() {
                 // No update needed, so we read current config.
                 console.log(`system.json is newer than than ${systemJsonExpiration} hours, so not being updated.`);
                 // prepare current system
-                const readFileRet = await readFileAsync(__dirname + '/lib/system.json', 'utf8');
+                const readFileRet = await tools.readFileAsync(__dirname + '/lib/system.json', 'utf8');
                 if (!readFileRet) {
                     throw('Could not get /lib/system.json contents');
                 } else {
@@ -133,7 +133,7 @@ async function init() {
         /**
          * Get distribution specific functions for global variable 'funcs'
          */
-        if (await fileExistsAsync(`${__dirname}/lib/${systemInfo.distribution}.js`, fs.constants.F_OK)) {
+        if (await tools.fileExistsAsync(`${__dirname}/lib/${systemInfo.distribution}.js`, fs.constants.F_OK)) {
             funcs = require(`${__dirname}/lib/${systemInfo.distribution}.js`);
         } else {
             console.warn(`No distribution specific module found for '${systemInfo.distribution}'`);
@@ -165,7 +165,7 @@ async function init() {
 
             conn.on('connect_error', (error)=>{
                 console.error(`Error: ${error} - Please check if ip ('${ip}') and port('${port}') matches with socketio adapter settings.`);
-                setStateAsync(`${ns}.${instance}.${systemInfo.hostname}.info.connected`, {val: false, ack:true});
+                tools.setStateAsync(`${ns}.${instance}.${systemInfo.hostname}.info.connected`, {val: false, ack:true});
             });
 
             conn.on('error', (error) => {
@@ -211,7 +211,7 @@ async function init() {
 
             process.on('SIGTERM', ()=>{
                 console.log('System is shutting down');
-                setStateAsync(`${ns}.${instance}.${systemInfo.hostname}.info.connected`, {val: false, ack:true});
+                tools.setStateAsync(`${ns}.${instance}.${systemInfo.hostname}.info.connected`, {val: false, ack:true});
                 process.exit();
             });
 
@@ -219,7 +219,7 @@ async function init() {
 
 
     } catch (error) {
-        dumpError(`getSystemInformation()`, error);
+        tools.dumpError(`getSystemInformation()`, error);
     }
 
 }
@@ -243,7 +243,7 @@ async function ioBrokerInit(){
         const obj = await getObjectAsync(`${ns}.${instance}.${systemInfo.hostname}`);
         if(!obj) throw(`Could not get object '${ns}.${instance}.${systemInfo.hostname}'`);
         for (const key in systemInfo) {
-            const stateValObj = getStateValueType(key, systemInfo[key]);
+            const stateValObj = tools.getStateValueType(key, systemInfo[key]);
             if (stateValObj.type !== null) {
                 obj.native[key] = stateValObj.val;
             }
@@ -261,7 +261,7 @@ async function ioBrokerInit(){
         }
 
     } catch (error) {
-        dumpError(`init() Unexpected error`, error);
+        tools.dumpError(`init() Unexpected error`, error);
     }
 }
 
@@ -301,7 +301,7 @@ async function createObjectsAsync() {
 
     // System info states
     for (const key in systemInfo) {
-        const stateValObj = getStateValueType(key, systemInfo[key]);
+        const stateValObj = tools.getStateValueType(key, systemInfo[key]);
         if (stateValObj.type !== null) objectsToProcess.push({id: path + '.info.' + key, obj:{type:'state', common: {name: key, role:'state', type: stateValObj.type, read: true, write: false, def:stateValObj.val}, native: {}}});
     }
 
@@ -333,7 +333,7 @@ async function createObjectsAsync() {
     // Update system info states.
     // TODO: check if this is really needed after every restart, or only if lib/system.json was updated
     for (const key in systemInfo) {
-        const stateValObj = getStateValueType(key, systemInfo[key]);
+        const stateValObj = tools.getStateValueType(key, systemInfo[key]);
         if (stateValObj.type !== null) await setStateAsync(path + '.info.' + key, {val: stateValObj.val, ack:true});
     }
 
@@ -343,107 +343,6 @@ async function createObjectsAsync() {
 
 
 /**
- * Execute a command
- * @param {string} cmd
- * @param {object} [callback=undefined]
- */
-function command(cmd, callback=undefined) {
-    exec(cmd, (error, stdout, stderr)=>{
-        if (error){console.log(error);}
-        if(stdout){
-            const answer = stdout.trim();
-            console.log('stdout: ' + answer);
-            setStateAsync(`${ns}.${instance}.${systemInfo.hostname}.cmd_answer`, {val: answer, ack:true});
-        }else if(stderr){
-            console.log('stderr: ' + stderr);
-            callback && callback('Error');
-            setStateAsync(`${ns}.${instance}.${systemInfo.hostname}.cmd_answer`, {val: 'Error: ' + stderr, ack:true});
-        }
-    });
-}
-
-
-
-/**
- * Checks a given state value, and returns the corrected value and the associated type
- * @param {string} state - for logging only
- * @param {*} value - state value to check
- * @return {object} - {val:<state value>, type:<type or null in case of errors>}
- */
-function getStateValueType(state, value) {
-
-    let valueType;
-    if (value===undefined || value===null) {
-        console.warn(`State value of '${state}' is undefined or null.`);
-        valueType = null;
-    } else if (['boolean','string','number'].indexOf(typeof value) !== -1) {
-        valueType = typeof value;
-    } else if (typeof value === 'object') {
-        value = JSON.stringify(value);
-        valueType = 'string';
-    } else {
-        console.warn(`Type '${typeof value}' of state '${state}' is not supported.`);
-        valueType = null;
-    }
-    return {val:value, type:valueType};
-
-}
-
-
-/**
- * Promise Wrapping
- */
-
-
-/**
- * @param {string} path - File path
- * @param {object|string} opt - Options, see https://nodejs.org/api/fs.html#fs_fs_readfile_path_options_callback
- * @return {Promise<string|null>} string if successful, null if not.
- */
-function readFileAsync(path, opt) {
-    return new Promise((resolve, reject) => {
-        fs.readFile(path, opt, (err, data) => {
-            if (err) {
-                dumpError('readFileAsync()', err);
-                reject(null);
-            } else {
-                resolve(data.toString());
-            }
-        });
-    });
-}
-
-/**
- * @param {string} path - File path
- * @return {Promise<object|null>} object with states if successful, null if not.
- */
-function getFileStatsAsync(path) {
-    return new Promise((resolve, reject) => {
-        fs.stat(path, (err, stats) => {
-            if (err) {
-                dumpError('getFileStats()', err);
-                reject(null);
-            } else {
-                resolve(stats);
-            }
-        });
-    });
-}
-
-
-function fileExistsAsync(path, opt) {
-    return new Promise((resolve) => {
-        fs.access(path, opt, (err) => {
-            if (err) {
-                resolve(false);
-            } else {
-                resolve(true);
-            }
-        });
-    });
-}
-
-/**
  * @param {string} path - File path
  * @return {Promise<object|null>} object if successful, null if not.
  */
@@ -451,7 +350,7 @@ function getObjectAsync(path) {
     return new Promise((resolve, reject) => {
         conn.emit('getObject', path, (err, data)=>{
             if (err) {
-                dumpError('getObjectAsync()', err);
+                tools.dumpError('getObjectAsync()', err);
                 reject(null);
             } else {
                 resolve(data);
@@ -493,7 +392,7 @@ function setObjectAsync(path, obj) {
     return new Promise((resolve, reject) => {
         conn.emit('setObject', path, obj, (err)=>{
             if (err) {
-                dumpError('setObjectAsync()', err);
+                tools.dumpError('setObjectAsync()', err);
                 reject(false);
             } else {
                 resolve(true);
@@ -524,7 +423,7 @@ function setStateAsync(path, val) {
     return new Promise((resolve, reject) => {
         conn.emit('setState', path, val, (err)=>{
             if (err) {
-                dumpError('setStateAsync()', err);
+                tools.dumpError('setStateAsync()', err);
                 reject(false);
             } else {
                 resolve(true);
@@ -533,47 +432,26 @@ function setStateAsync(path, val) {
     });
 }
 
-/**
- * Waiting for user input on CLI
- * @param {string} query
- * @returns {Promise<unknown>}
- */
-function readlineQuestionAsync(query) {
-    return new Promise( (resolve, reject) => {
-        const rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout
-        });
-
-        rl.question(query, (answer) => {
-            resolve(answer)
-            rl.close();
-        })
-    })
-}
 
 /**
- * Error Message to Log. Handles error object being provided.
- *
- * @param {string} msg               - (intro) message of the error
- * @param {*}      [error=undefined] - Optional: Error object or string
+ * Execute a command
+ * @param {string} cmd
+ * @param {object} [callback=undefined]
  */
-function dumpError(msg, error=undefined) {
-    if (!error) {
-        console.error(msg);
-    } else {
-        if (typeof error === 'object') {
-            if (error.stack) {
-                console.error(`${msg} – ${error.stack}`);
-            } else if (error.message) {
-                console.error(`${msg} – ${error.message}`);
-            } else {
-                console.error(`${msg} – ${JSON.stringify(error)}`);
-            }
-        } else if (typeof error === 'string') {
-            console.error(`${msg} – ${error}`);
-        } else {
-            console.error(`[dumpError()] : wrong error argument: ${JSON.stringify(error)}`);
+function command(cmd, callback=undefined) {
+    exec(cmd, (error, stdout, stderr)=>{
+        if (error){console.log(error);}
+        if(stdout){
+            const answer = stdout.trim();
+            //TODO: remove log for stable release
+            console.log('stdout: ' + answer);
+            setStateAsync(`${ns}.${instance}.${systemInfo.hostname}.cmd_answer`, {val: answer, ack:true});
+        }else if(stderr){
+            console.log('stderr: ' + stderr);
+            callback && callback('Error');
+            setStateAsync(`${ns}.${instance}.${systemInfo.hostname}.cmd_answer`, {val: 'Error: ' + stderr, ack:true});
         }
-    }
+    });
 }
+
+
