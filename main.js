@@ -99,7 +99,13 @@ async function init() {
             port = input_port;
 
             // - Namespace -
-            // !! TODO: Add input validation
+            config += `NS=drones\n`;
+            ns = 'drones';
+
+            // Following commented out on 22-Oct-2020 and replaced with the two lines above.
+            // -- we do not ask the user for namespace, but use 'drones' per default.
+            //    see discussion: https://discordapp.com/channels/743167951875604501/743171252377616476/768916959214567497            
+            /*
             const input_ns = await tools.readlineQuestionAsync('Namespace for ioBroker you want to use (default: drones):');
             if (input_ns.length === 0) {
                 config += `NS=drones\n`;
@@ -108,6 +114,7 @@ async function init() {
                 config += `NS=${input_ns}\n`;
                 ns = input_ns;
             }
+            */
 
             // - Instance -
             let input_instance = '';
