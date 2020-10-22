@@ -5,10 +5,12 @@
         "get",
         "get o sinfo",
         "getprop",
+        "nogroup",
         "nokey",
         "o",
         "patt",
         "sinfo",
-        "socketio"
+        "socketio",
+        "zorin"
     ]
 }

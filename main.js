@@ -39,29 +39,68 @@ let conn;
 
 init();
 async function init() {
+
     /**
      * Check if .env exists if it does ask the user for information and create it
      */
     try {
         if (!await tools.fileExistsAsync(__dirname + '/.env')) {
             let config = '';
+
             //Create CLI
 
-            //Ask the user for data
-            let input_ip = await tools.readlineQuestionAsync('No configuration found! Please enter it now.\nWhere default is present you can leave empty if you want.\n\nIP for ioBroker: ');
+            /**
+             * Ask the user for data
+             */
+            console.log(`No configuration found! Please enter it now.\nWhere default is present you can leave empty to use that default value.\n`);
+
+            // - IP address -
+            let input_ip = '';
+            let ipValid = 0; // -1 = invalid, 0 = unknown, 1 = valid )
+            while (ipValid < 1) {
+                switch (ipValid) {
+                    case (0):
+                        // status unknown (happens at first execution)
+                        input_ip = await tools.readlineQuestionAsync('IP address of ioBroker (e.g. 192.168.10.10): ');
+                        ipValid = (tools.validateIP(input_ip)) ? 1 : -1;
+                        break;
+                    case (-1):
+                        // status invalid (user entered invalid IP address)
+                        input_ip = await tools.readlineQuestionAsync('You have entered an invalid IP address, please try again: ');
+                        ipValid = (tools.validateIP(input_ip)) ? 1 : -1;
+                        break;
+                    default:
+                        break;
+                }
+            }
             config += `IP=${input_ip}\n`;
             ip = input_ip;
 
-            let input_port = await tools.readlineQuestionAsync('Socketio port (default: 8084):')
-            if(input_port.length === 0) {
-                config += `PORT=8084\n`;
-                port = '8084';
-            } else {
-                config += `PORT=${input_port}\n`;
-                port = input_port
+            // - Port - 
+            let input_port = '';
+            let portValid = 0; // -1 = invalid, 0 = unknown, 1 = valid )
+            while (portValid < 1) {
+                switch (portValid) {
+                    case (0):
+                        // status unknown (happens at first execution)
+                        input_port = await tools.readlineQuestionAsync('Socketio port (default: 8084): ');
+                        portValid = (tools.validatePort(input_port)) ? 1 : -1;
+                        break;
+                    case (-1):
+                        // status invalid (user entered invalid IP address)
+                        input_port = await tools.readlineQuestionAsync('You have entered an invalid port, please try again: ');
+                        portValid = (tools.validatePort(input_port)) ? 1 : -1;
+                        break;
+                    default:
+                        break;
+                }
             }
+            config += `PORT=${input_port}\n`;
+            port = input_port;
 
-            let input_ns = await tools.readlineQuestionAsync('Namespace for ioBroker you want to use (default: drones):');
+            // - Namespace -
+            // !! TODO: Add input validation
+            const input_ns = await tools.readlineQuestionAsync('Namespace for ioBroker you want to use (default: drones):');
             if (input_ns.length === 0) {
                 config += `NS=drones\n`;
                 ns = 'drones';
@@ -70,10 +109,12 @@ async function init() {
                 ns = input_ns;
             }
 
-            let input_instance = await tools.readlineQuestionAsync('Instance number for ioBroker (default: 0): ');
+            // - Instance -
+            // !! TODO: Add input validation
+            const input_instance = await tools.readlineQuestionAsync('Instance number for ioBroker (default: 0): ');
             if (input_instance.length === 0) {
                 config += `INSTANCE=0\n`;
-                instance = 0;
+                instance = '0';
             } else {
                 config += `INSTANCE=${input_instance}\n`;
                 instance = input_instance;
