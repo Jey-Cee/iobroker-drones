@@ -1,0 +1,1 @@
+* 22-Oct-2020 (Mic-M) - Input Validation of IP Address: check if target is reachable (ping)

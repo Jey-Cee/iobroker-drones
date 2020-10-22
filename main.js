@@ -87,7 +87,7 @@ async function init() {
                         portValid = (tools.validatePort(input_port)) ? 1 : -1;
                         break;
                     case (-1):
-                        // status invalid (user entered invalid IP address)
+                        // status invalid (user entered invalid Port)
                         input_port = await tools.readlineQuestionAsync('You have entered an invalid port, please try again: ');
                         portValid = (tools.validatePort(input_port)) ? 1 : -1;
                         break;
@@ -110,16 +110,30 @@ async function init() {
             }
 
             // - Instance -
-            // !! TODO: Add input validation
-            const input_instance = await tools.readlineQuestionAsync('Instance number for ioBroker (default: 0): ');
-            if (input_instance.length === 0) {
-                config += `INSTANCE=0\n`;
-                instance = '0';
-            } else {
-                config += `INSTANCE=${input_instance}\n`;
-                instance = input_instance;
+            let input_instance = '';
+            let instanceValid = 0; // -1 = invalid, 0 = unknown, 1 = valid )
+            while (instanceValid < 1) {
+                switch (instanceValid) {
+                    case (0):
+                        // status unknown (happens at first execution)
+                        input_instance = await tools.readlineQuestionAsync('Instance number for ioBroker (default: 0): ');
+                        instanceValid = (tools.validateInstanceNo(input_instance)) ? 1 : -1;
+                        break;
+                    case (-1):
+                        // status invalid (user entered invalid Port)
+                        input_instance = await tools.readlineQuestionAsync('You have entered an invalid Instance number, please try again: ');
+                        instanceValid = (tools.validateInstanceNo(input_instance)) ? 1 : -1;
+                        break;
+                    default:
+                        break;
+                }
             }
-            await fs.writeFileSync('.env', config);
+            config += `INSTANCE=${input_instance}\n`;
+            instance = input_instance;
+
+            // Finally set the config file
+            fs.writeFileSync('.env', config);
+
         }
     } catch (error) {
         tools.dumpError(`check .env`, error);
